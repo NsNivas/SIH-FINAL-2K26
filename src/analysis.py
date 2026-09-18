@@ -9,8 +9,21 @@ def projects_by_agency():
     return agency_counts
 
 
+def projects_by_state():
+    df = load_projects()
+
+    state_counts = df["state"].value_counts()
+
+    return state_counts
+
+
 if __name__ == "__main__":
-    result = projects_by_agency()
+    agency_result = projects_by_agency()
 
     print("Projects by Agency:")
-    print(result)
+    print(agency_result)
+
+    state_result = projects_by_state()
+
+    print("\nProjects by State:")
+    print(state_result)
