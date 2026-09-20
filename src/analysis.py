@@ -37,6 +37,31 @@ def expenditure_analysis():
     return total_expenditure
 
 
+def cost_increase_analysis():
+    df = load_projects()
+
+    cost_increased = df[
+        df["revised_cost_crore"] > df["original_cost_crore"]
+    ]
+
+    number_of_projects = len(cost_increased)
+
+    total_cost_increase = (
+        cost_increased["revised_cost_crore"]
+        - cost_increased["original_cost_crore"]
+    ).sum()
+
+    percentage_of_projects = (
+        number_of_projects / len(df)
+    ) * 100
+
+    return {
+        "number_of_projects": number_of_projects,
+        "total_cost_increase": total_cost_increase,
+        "percentage_of_projects": percentage_of_projects
+    }
+
+
 if __name__ == "__main__":
     agency_result = projects_by_agency()
 
@@ -66,3 +91,23 @@ if __name__ == "__main__":
     print("\nExpenditure Analysis:")
     print("Total Cumulative Expenditure:",
           expenditure_result, "crore")
+
+    cost_increase_result = cost_increase_analysis()
+
+    print("\nCost Increase Analysis:")
+    print(
+        "Projects with increased cost:",
+        cost_increase_result["number_of_projects"]
+    )
+
+    print(
+        "Total cost increase:",
+        cost_increase_result["total_cost_increase"],
+        "crore"
+    )
+
+    print(
+        "Percentage of projects with increased cost:",
+        cost_increase_result["percentage_of_projects"],
+        "%"
+    )
