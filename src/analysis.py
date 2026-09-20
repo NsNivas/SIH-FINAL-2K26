@@ -62,6 +62,29 @@ def cost_increase_analysis():
     }
 
 
+def progress_category_analysis():
+    df = load_projects()
+
+    def categorize_progress(progress):
+        if progress <= 25:
+            return "Low"
+        elif progress <= 50:
+            return "Moderate"
+        elif progress <= 75:
+            return "Good"
+        else:
+            return "High"
+
+    df["progress_category"] = df["physical_progress_pct"].apply(
+        categorize_progress
+    )
+
+    progress_counts = df["progress_category"].value_counts()
+
+    return progress_counts
+
+
+
 if __name__ == "__main__":
     agency_result = projects_by_agency()
 
@@ -111,3 +134,8 @@ if __name__ == "__main__":
         cost_increase_result["percentage_of_projects"],
         "%"
     )
+
+
+    progress_result = progress_category_analysis()
+    print("\nProjects by Progress Category:")
+    print(progress_result)
