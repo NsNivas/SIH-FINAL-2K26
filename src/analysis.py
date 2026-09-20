@@ -139,3 +139,4 @@ if __name__ == "__main__":
     progress_result = progress_category_analysis()
     print("\nProjects by Progress Category:")
     print(progress_result)
+    print("\nTotal Number of Projects:", progress_result.sum())
