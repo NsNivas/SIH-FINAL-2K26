@@ -29,6 +29,14 @@ def project_cost_analysis():
         "total_cost_increase": total_cost_increase
     }
 
+def expenditure_analysis():
+    df = load_projects()
+
+    total_expenditure = df["cumulative_expenditure_crore"].sum()
+
+    return total_expenditure
+
+
 if __name__ == "__main__":
     agency_result = projects_by_agency()
 
@@ -51,3 +59,10 @@ if __name__ == "__main__":
 
     print("Total Cost Increase:",
           cost_result["total_cost_increase"], "crore")
+
+
+    expenditure_result = expenditure_analysis()
+
+    print("\nExpenditure Analysis:")
+    print("Total Cumulative Expenditure:",
+          expenditure_result, "crore")
