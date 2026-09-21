@@ -1,209 +1,213 @@
 import pandas as pd
+
 from data_loader import load_projects
 
 
 def calculate_risk(df):
-    """
-    Calculate current risk score for April 2026 projects.
-
-    Risk factors:
-    1. Cost escalation
-    2. Physical progress
-    3. Expenditure level
-    4. Schedule status
-    """
-
-    df = df.copy()
-
     # ---------------------------------------------------------
-    # 1. COST ESCALATION
+    # 1. Cost Escalation
     # ---------------------------------------------------------
-
     df["cost_escalation_pct"] = (
         (df["revised_cost_crore"] - df["original_cost_crore"])
         / df["original_cost_crore"]
     ) * 100
 
-    df["cost_escalation_pct"] = (
-        df["cost_escalation_pct"]
-        .replace([float("inf"), -float("inf")], 0)
-        .fillna(0)
-    )
-
-    # Cost risk score: maximum 30 points
-    df["cost_risk_score"] = (
-        df["cost_escalation_pct"]
-        .apply(
-            lambda x:
-                30 if x > 30
-                else 20 if x > 15
-                else 10 if x > 5
-                else 0
-        )
+    # Avoid invalid values caused by zero original cost
+    df["cost_escalation_pct"] = df["cost_escalation_pct"].replace(
+        [float("inf"), -float("inf")], 0
     )
 
     # ---------------------------------------------------------
-    # 2. PHYSICAL PROGRESS
+    # 2. Expenditure Percentage
     # ---------------------------------------------------------
-
-    # Lower progress = higher current risk
-    df["progress_risk_score"] = (
-        df["physical_progress_pct"]
-        .apply(
-            lambda x:
-                30 if x < 25
-                else 20 if x < 50
-                else 10 if x < 75
-                else 0
-        )
-    )
-
-    # ---------------------------------------------------------
-    # 3. EXPENDITURE
-    # ---------------------------------------------------------
-
     df["expenditure_pct"] = (
         df["cumulative_expenditure_crore"]
         / df["revised_cost_crore"]
     ) * 100
 
-    df["expenditure_pct"] = (
-        df["expenditure_pct"]
-        .replace([float("inf"), -float("inf")], 0)
-        .fillna(0)
+    df["expenditure_pct"] = df["expenditure_pct"].replace(
+        [float("inf"), -float("inf")], 0
     )
 
     # ---------------------------------------------------------
-    # 4. SCHEDULE STATUS
+    # 3. Cost Risk Score
     # ---------------------------------------------------------
+    df["cost_risk_score"] = 0
 
-    today = pd.Timestamp("2026-04-30")
+    df.loc[df["cost_escalation_pct"] > 5, "cost_risk_score"] = 10
+    df.loc[df["cost_escalation_pct"] > 15, "cost_risk_score"] = 20
+    df.loc[df["cost_escalation_pct"] > 30, "cost_risk_score"] = 30
 
+    # ---------------------------------------------------------
+    # 4. Physical Progress Risk Score
+    # ---------------------------------------------------------
+    df["progress_risk_score"] = 0
+
+    df.loc[df["physical_progress_pct"] < 75, "progress_risk_score"] = 10
+    df.loc[df["physical_progress_pct"] < 50, "progress_risk_score"] = 20
+    df.loc[df["physical_progress_pct"] < 25, "progress_risk_score"] = 30
+
+    # ---------------------------------------------------------
+    # 5. Expenditure vs Physical Progress Risk
+    # ---------------------------------------------------------
+    #
+    # If expenditure is significantly ahead of physical progress,
+    # the project may require attention.
+    #
+    # Difference:
+    # expenditure percentage - physical progress percentage
+    #
+    df["expenditure_progress_gap"] = (
+        df["expenditure_pct"] - df["physical_progress_pct"]
+    )
+
+    df["expenditure_risk_score"] = 0
+
+    df.loc[
+        df["expenditure_progress_gap"] > 20,
+        "expenditure_risk_score"
+    ] = 10
+
+    df.loc[
+        df["expenditure_progress_gap"] > 40,
+        "expenditure_risk_score"
+    ] = 20
+
+    # ---------------------------------------------------------
+    # 6. Schedule Risk Score
+    # ---------------------------------------------------------
     df["revised_target_completion_date"] = pd.to_datetime(
         df["revised_target_completion_date"],
-        errors="coerce"
+        errors="coerce",
+        format="mixed"
     )
 
-    df["schedule_risk_score"] = (
-        df["revised_target_completion_date"]
-        .apply(
-            lambda date:
-                10
-                if pd.notna(date) and date < today
-                else 0
-        )
-    )
+    report_date = pd.Timestamp("2026-04-30")
+
+    df["schedule_risk_score"] = 0
+
+    df.loc[
+        df["revised_target_completion_date"] < report_date,
+        "schedule_risk_score"
+    ] = 10
 
     # ---------------------------------------------------------
-    # 5. TOTAL RISK SCORE
+    # 7. Total Risk Score
     # ---------------------------------------------------------
-
-    df["risk_score"] = (
+    #
+    # Maximum:
+    # Cost       = 30
+    # Progress   = 30
+    # Expenditure= 20
+    # Schedule   = 10
+    #
+    # Maximum total = 90
+    #
+    df["raw_risk_score"] = (
         df["cost_risk_score"]
         + df["progress_risk_score"]
+        + df["expenditure_risk_score"]
         + df["schedule_risk_score"]
     )
 
-    # Maximum = 70 points
-    # Convert to 100-point scale
+    # Convert to 0-100 scale
     df["risk_score"] = (
-        df["risk_score"] / 70
+        df["raw_risk_score"] / 90
     ) * 100
 
-    # ---------------------------------------------------------
-    # 6. RISK LEVEL
-    # ---------------------------------------------------------
-
-    df["risk_level"] = df["risk_score"].apply(
-        lambda x:
-            "High" if x >= 60
-            else "Medium" if x >= 30
-            else "Low"
-    )
+    df["risk_score"] = df["risk_score"].round(2)
 
     # ---------------------------------------------------------
-    # 7. EARLY WARNING FLAGS
+    # 8. Risk Level
     # ---------------------------------------------------------
+    df["risk_level"] = "Low"
 
-    def generate_warning(row):
+    df.loc[df["risk_score"] >= 30, "risk_level"] = "Medium"
+    df.loc[df["risk_score"] >= 60, "risk_level"] = "High"
 
-        warnings = []
+    # ---------------------------------------------------------
+    # 9. Early Warning Flags
+    # ---------------------------------------------------------
+    warnings = []
+
+    for _, row in df.iterrows():
+
+        project_warnings = []
 
         if row["cost_escalation_pct"] > 15:
-            warnings.append("High Cost Escalation")
+            project_warnings.append("High Cost Escalation")
 
         if row["physical_progress_pct"] < 25:
-            warnings.append("Low Physical Progress")
+            project_warnings.append("Low Physical Progress")
+
+        if row["expenditure_progress_gap"] > 40:
+            project_warnings.append(
+                "Expenditure Significantly Ahead of Progress"
+            )
 
         if (
-            row["revised_target_completion_date"] < today
+            pd.notna(row["revised_target_completion_date"])
+            and row["revised_target_completion_date"] < report_date
         ):
-            warnings.append("Target Date Passed")
+            project_warnings.append("Target Date Passed")
 
-        if (
-            row["expenditure_pct"] > 80
-            and row["physical_progress_pct"] < 50
-        ):
-            warnings.append("High Expenditure with Low Progress")
+        warnings.append(" | ".join(project_warnings))
 
-        if not warnings:
-            return "No Immediate Warning"
-
-        return " | ".join(warnings)
-
-    df["early_warning"] = df.apply(
-        generate_warning,
-        axis=1
-    )
+    df["early_warning"] = warnings
 
     return df
 
 
-if __name__ == "__main__":
+def main():
 
-    # Load April 2026 project data
-    projects = load_projects()
+    # Load project data
+    df = load_projects()
 
     # Calculate risk
-    risk_data = calculate_risk(projects)
+    df = calculate_risk(df)
 
     # ---------------------------------------------------------
-    # SUMMARY
+    # Summary
     # ---------------------------------------------------------
-
     print("\n===== APRIL 2026 PROJECT RISK SUMMARY =====")
 
     print("\nTotal Projects:")
-    print(len(risk_data))
+    print(len(df))
 
     print("\nRisk Level:")
-    print(risk_data["risk_level"].value_counts())
+    print(df["risk_level"].value_counts())
 
     print("\nAverage Risk Score:")
-    print(round(risk_data["risk_score"].mean(), 2))
+    print(round(df["risk_score"].mean(), 2))
 
     print("\nProjects with Early Warnings:")
-    warning_projects = (
-        risk_data["early_warning"]
-        != "No Immediate Warning"
-    ).sum()
+    print((df["early_warning"] != "").sum())
 
-    print(warning_projects)
-
+    # ---------------------------------------------------------
+    # Top 10 Highest Risk Projects
+    # ---------------------------------------------------------
     print("\nTop 10 Highest Risk Projects:")
 
-    top_risk = risk_data.sort_values(
-        "risk_score",
+    top_projects = df.sort_values(
+        by="risk_score",
         ascending=False
     ).head(10)
 
     print(
-        top_risk[
+        top_projects[
             [
                 "project_name",
                 "risk_score",
                 "risk_level",
+                "cost_escalation_pct",
+                "physical_progress_pct",
+                "expenditure_pct",
+                "expenditure_progress_gap",
                 "early_warning"
             ]
         ].to_string(index=False)
     )
+
+
+if __name__ == "__main__":
+    main()
